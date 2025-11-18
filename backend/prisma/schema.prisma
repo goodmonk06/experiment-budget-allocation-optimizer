@@ -1,0 +1,49 @@
+// Prisma schema for Budget Allocation Optimizer
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Experiment {
+  id        String   @id @default(uuid())
+  name      String
+  channel   String   // e.g., "Google Ads", "Facebook", "Email"
+  status    String   // "active", "paused", "completed"
+  createdAt DateTime @default(now())
+
+  metrics   ExperimentMetricSnapshot[]
+
+  @@map("experiments")
+}
+
+model ExperimentMetricSnapshot {
+  id           String   @id @default(uuid())
+  experimentId String
+  date         DateTime @db.Date
+  spend        Float    // Total spend in dollars
+  impressions  Int
+  clicks       Int
+  conversions  Int
+  revenue      Float    // Total revenue generated in dollars
+
+  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, date])
+  @@index([experimentId])
+  @@index([date])
+  @@map("experiment_metric_snapshots")
+}
+
+model AllocationSuggestion {
+  id             String   @id @default(uuid())
+  createdAt      DateTime @default(now())
+  inputJson      Json     // Input parameters and experiment data
+  suggestionJson Json     // Suggested allocations with percentages
+
+  @@map("allocation_suggestions")
+}
