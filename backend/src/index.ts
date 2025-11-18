@@ -3,6 +3,10 @@ import cors from '@fastify/cors';
 import { experimentRoutes } from './routes/experiments';
 import { metricRoutes } from './routes/metrics';
 import { allocationRoutes } from './routes/allocations';
+import { budgetPlanRoutes } from './routes/budget-plans';
+import { alertRoutes } from './routes/alerts';
+import { tagRoutes } from './routes/tags';
+import { groupRoutes } from './routes/groups';
 import { errorHandler } from './lib/errors';
 import { logger } from './lib/logger';
 
@@ -34,6 +38,10 @@ async function start() {
     await fastify.register(experimentRoutes, { prefix: '/api' });
     await fastify.register(metricRoutes, { prefix: '/api' });
     await fastify.register(allocationRoutes, { prefix: '/api' });
+    await fastify.register(budgetPlanRoutes, { prefix: '/api' });
+    await fastify.register(alertRoutes, { prefix: '/api' });
+    await fastify.register(tagRoutes, { prefix: '/api' });
+    await fastify.register(groupRoutes, { prefix: '/api' });
 
     // Start server
     await fastify.listen({ port: PORT, host: '0.0.0.0' });
