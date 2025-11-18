@@ -10,14 +10,24 @@ datasource db {
 }
 
 model Experiment {
-  id        String   @id @default(uuid())
-  name      String
-  channel   String   // e.g., "Google Ads", "Facebook", "Email"
-  status    String   // "active", "paused", "completed"
-  createdAt DateTime @default(now())
+  id          String    @id @default(uuid())
+  name        String
+  channel     String    // e.g., "Google Ads", "Facebook", "Email"
+  status      String    // "active", "paused", "completed"
+  description String?
+  groupId     String?
+  metadata    Json?     // Flexible storage for custom fields
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  metrics   ExperimentMetricSnapshot[]
+  group       ExperimentGroup? @relation(fields: [groupId], references: [id])
+  metrics     ExperimentMetricSnapshot[]
+  tags        ExperimentTagAssignment[]
+  alerts      PerformanceAlert[]
+  auditLogs   AuditLog[]
 
+  @@index([groupId])
+  @@index([status])
   @@map("experiments")
 }
 
@@ -41,9 +51,151 @@ model ExperimentMetricSnapshot {
 
 model AllocationSuggestion {
   id             String   @id @default(uuid())
+  strategyId     String?
+  budgetPlanId   String?
   createdAt      DateTime @default(now())
   inputJson      Json     // Input parameters and experiment data
   suggestionJson Json     // Suggested allocations with percentages
+  appliedAt      DateTime?
+  appliedBy      String?
 
+  strategy       AllocationStrategy? @relation(fields: [strategyId], references: [id])
+  budgetPlan     BudgetPlan? @relation(fields: [budgetPlanId], references: [id])
+  auditLogs      AuditLog[]
+
+  @@index([createdAt])
+  @@index([strategyId])
+  @@index([budgetPlanId])
   @@map("allocation_suggestions")
+}
+
+model ExperimentGroup {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  parentId    String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent      ExperimentGroup? @relation("GroupHierarchy", fields: [parentId], references: [id])
+  children    ExperimentGroup[] @relation("GroupHierarchy")
+  experiments Experiment[]
+  budgetPlans BudgetPlan[]
+
+  @@index([parentId])
+  @@map("experiment_groups")
+}
+
+model BudgetPlan {
+  id             String   @id @default(uuid())
+  name           String
+  description    String?
+  groupId        String?
+  totalBudget    Float
+  startDate      DateTime
+  endDate        DateTime
+  status         String   @default("draft") // draft, active, completed
+  strategyId     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  group          ExperimentGroup? @relation(fields: [groupId], references: [id])
+  strategy       AllocationStrategy? @relation(fields: [strategyId], references: [id])
+  allocations    AllocationSuggestion[]
+  auditLogs      AuditLog[]
+
+  @@index([groupId])
+  @@index([strategyId])
+  @@index([status])
+  @@index([startDate, endDate])
+  @@map("budget_plans")
+}
+
+model AllocationStrategy {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  type        String   // "composite", "ml", "custom"
+  config      Json     // Strategy-specific configuration
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  suggestions AllocationSuggestion[]
+  budgetPlans BudgetPlan[]
+  auditLogs   AuditLog[]
+
+  @@map("allocation_strategies")
+}
+
+model PerformanceAlert {
+  id             String   @id @default(uuid())
+  experimentId   String?
+  name           String
+  description    String?
+  metricName     String   // "roas", "ctr", "cac", "conversionRate"
+  operator       String   // "gt", "lt", "eq", "gte", "lte"
+  threshold      Float
+  status         String   @default("active") // active, paused, triggered
+  lastTriggered  DateTime?
+  triggerCount   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  experiment     Experiment? @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  auditLogs      AuditLog[]
+
+  @@index([experimentId])
+  @@index([status])
+  @@map("performance_alerts")
+}
+
+model ExperimentTag {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  color       String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  assignments ExperimentTagAssignment[]
+
+  @@map("experiment_tags")
+}
+
+model ExperimentTagAssignment {
+  id           String   @id @default(uuid())
+  experimentId String
+  tagId        String
+  createdAt    DateTime @default(now())
+
+  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  tag          ExperimentTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, tagId])
+  @@index([experimentId])
+  @@index([tagId])
+  @@map("experiment_tag_assignments")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  entityType   String   // "experiment", "allocation", "budgetPlan", etc.
+  entityId     String
+  action       String   // "create", "update", "delete", "apply"
+  changes      Json?    // What changed
+  userId       String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  experiment         Experiment? @relation(fields: [entityId], references: [id], onDelete: Cascade, map: "audit_experiment_fk")
+  allocationSuggestion AllocationSuggestion? @relation(fields: [entityId], references: [id], onDelete: Cascade, map: "audit_allocation_fk")
+  budgetPlan         BudgetPlan? @relation(fields: [entityId], references: [id], onDelete: Cascade, map: "audit_budget_plan_fk")
+  strategy           AllocationStrategy? @relation(fields: [entityId], references: [id], onDelete: Cascade, map: "audit_strategy_fk")
+  alert              PerformanceAlert? @relation(fields: [entityId], references: [id], onDelete: Cascade, map: "audit_alert_fk")
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([userId])
+  @@map("audit_logs")
 }

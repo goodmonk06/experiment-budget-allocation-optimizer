@@ -17,6 +17,46 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - budget-optimizer
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: budget-optimizer-backend
+    environment:
+      DATABASE_URL: postgresql://optimizer:optimizer123@postgres:5432/budget_optimizer?schema=public
+      PORT: 3001
+      NODE_ENV: production
+      LOG_LEVEL: info
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - budget-optimizer
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: budget-optimizer-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - budget-optimizer
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+
+networks:
+  budget-optimizer:
+    driver: bridge

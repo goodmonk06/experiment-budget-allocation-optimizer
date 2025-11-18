@@ -3,27 +3,27 @@ import cors from '@fastify/cors';
 import { experimentRoutes } from './routes/experiments';
 import { metricRoutes } from './routes/metrics';
 import { allocationRoutes } from './routes/allocations';
+import { errorHandler } from './lib/errors';
+import { logger } from './lib/logger';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 const fastify = Fastify({
-  logger: {
-    transport: {
-      target: 'pino-pretty',
-      options: {
-        translateTime: 'HH:MM:ss Z',
-        ignore: 'pid,hostname',
-      },
-    },
-  },
+  logger,
+  disableRequestLogging: false,
 });
 
 async function start() {
   try {
     // Register CORS
     await fastify.register(cors, {
-      origin: true, // Allow all origins in development
+      origin: process.env.NODE_ENV === 'production'
+        ? (process.env.CORS_ORIGIN || '').split(',')
+        : true,
     });
+
+    // Global error handler
+    fastify.setErrorHandler(errorHandler);
 
     // Health check
     fastify.get('/health', async (request, reply) => {
@@ -38,16 +38,29 @@ async function start() {
     // Start server
     await fastify.listen({ port: PORT, host: '0.0.0.0' });
 
-    console.log(`
+    logger.info(`
 ╔═══════════════════════════════════════════════════════════╗
 ║  Budget Allocation Optimizer API                          ║
 ║  Server running on http://localhost:${PORT}                 ║
 ╚═══════════════════════════════════════════════════════════╝
     `);
   } catch (err) {
-    fastify.log.error(err);
+    logger.error(err, 'Failed to start server');
     process.exit(1);
   }
 }
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM received, closing server gracefully');
+  await fastify.close();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  logger.info('SIGINT received, closing server gracefully');
+  await fastify.close();
+  process.exit(0);
+});
 
 start();
